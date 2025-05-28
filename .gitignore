@@ -1,0 +1,15 @@
+# Données compressées
+*.tsv.gz
+*.csv
+
+# Checkpoints Jupyter
+.ipynb_checkpoints/
+
+# Cache Python
+__pycache__/
+
+# VS Code settings
+.vscode/
+
+# Fichiers temporaires
+*.log
