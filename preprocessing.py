@@ -37,4 +37,3 @@ with open('knn_model.pkl', 'wb') as f:
     pickle.dump(knn, f)
 
 print("pickle sauvgardé avec succés !")
-#test

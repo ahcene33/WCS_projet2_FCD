@@ -19,5 +19,8 @@ WCS_projet2_FCD_clean/
 *.log
 C/x3a/Users/Ahcene/
 
+#fichier pickle 
+*.pkl
+
 C/x3a/Users/Ahcene/*
 
