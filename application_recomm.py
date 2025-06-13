@@ -5,7 +5,7 @@ import pandas as pd
 st.set_page_config(page_title="Application de recommandation de films", layout="wide")
 
 #importation du dataframe clean
-data_tmdb = pd.read_csv("data_tmdb_clean.csv")  
+data_tmdb = pd.read_csv("data_tmdb_clean_reduced.csv")  
 films = data_tmdb.copy()
 films['release_date'] = pd.to_datetime(films['release_date'], errors='coerce')
 
@@ -18,14 +18,35 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 #implélementation du modèle de maching learning et le fit
 
+# nettoyage de la colonne text_features
+# on force tout en string + on remplace les nan/None par string vide
+films['text_features'] = films['text_features'].fillna('').astype(str)
+
+
 #initialiser le vectorizer 
-tfidf = TfidfVectorizer(stop_words='english')
+tfidf = TfidfVectorizer(stop_words='english', max_features=6000)
 
 #l'appliquer à la colonne 'text_features' et la création de la matrice
 tfidf_matrix =tfidf.fit_transform(films['text_features'])
 
-# calculer la similarité cosinus entre tous les films
-cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+from sklearn.decomposition import TruncatedSVD
+svd = TruncatedSVD(n_components=300, random_state=42)
+tfidf_reduced = svd.fit_transform(tfidf_matrix)
+
+# calculer la similarité cosinus entre tous les films : modèle KNN sur IF IDF
+
+from sklearn.neighbors import NearestNeighbors
+
+# combien de voisin on vise ?
+K = 10  # nombre de voisins
+
+# initialiser le modèle KNN
+knn = NearestNeighbors(metric='cosine', algorithm='brute')
+knn.fit(tfidf_reduced)
+
+# on prépare film_titles pour plus tard
+film_titles = films['original_title'].str.strip().str.lower().tolist()
+
 
 
 #créer la série indices qui reprend tous les titles de films en miniscules et en enlevant les espaces invisibles avec strip()
@@ -54,20 +75,15 @@ def recommandation_film(title, n=7) :
     st.write(f"Année de sortie : {film_selectionne['release_date'].year}")
     st.write(f"Résumé : {film_selectionne['overview']}")
 
-    liste_similarites  = list(enumerate(cosine_sim[index_du_film]))  
-    # on regarde à quel point un film ressemble aux autres films de notre dataframe
-    # cosine_sim donne la similarité avec tous les autres films 
-    # enumerate ajoute le numéro du film à chaque score
-    # on met ça dans une liste
+    # On utilise knn pour obtenir les voisins
+    distances, indices_neighbors = knn.kneighbors(tfidf_reduced[index_du_film].reshape(1, -1), n_neighbors=n+1)
 
-    similarites_tries = sorted(liste_similarites, key=lambda x : x[1], reverse=True)
-    similarites_tries = [sim for sim in similarites_tries if sim[0] != index_du_film]
-    films_similaires = similarites_tries[:n]
-    # on trie les similarités et on ignore la similarité du film avec lui-même (on la retire avec une condition)
+
+    # On ignore le premier (le film lui-même)
+    films_similaires = list(zip(indices_neighbors.flatten()[1:], 1 - distances.flatten()[1:]))
 
     indices_recommandes = [film[0] for film in films_similaires]
-    # on récupère les indices des films recommandés
-
+ 
     return indices_recommandes
 
 #_______________________________________________________________________________________________________________________________
@@ -103,7 +119,5 @@ with col1:
     st.image("logo_wild.png", width=50)
 
 with col2:
-    st.markdown("Cette application a été réalisée par **F.C Data**, Wild Code School 2025.")
-    # st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("Cette première version se base seulement sur la base TMDB dans un premier temps.")
-#test
+    st.markdown("Cette application a été réalisée par **F.C Data, Ahcene K, Kamel T & Majed S**, Wild Code School 2025.")
+    #test
