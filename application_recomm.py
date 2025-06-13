@@ -125,3 +125,5 @@ with col1:
 
 with col2:
     st.markdown("Cette application a été réalisée par **F.C Data, Ahcene K, Kamel T & Majed S**, Wild Code School 2025.")
+
+    #test
