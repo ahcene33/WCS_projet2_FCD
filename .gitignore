@@ -22,5 +22,8 @@ C/x3a/Users/Ahcene/
 #fichier pickle 
 *.pkl
 
+#fichier pickle 
+*.pkl
+
 C/x3a/Users/Ahcene/*
 
