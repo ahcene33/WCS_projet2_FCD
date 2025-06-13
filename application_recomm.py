@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
+import pickle
+
 
 # config de la page
 st.set_page_config(page_title="Application de recommandation de films", layout="wide")
 
 #importation du dataframe clean
-data_tmdb = pd.read_csv("data_tmdb_clean_reduced.csv")  
+data_tmdb = pd.read_csv("data_tmdb_clean.csv")  
 films = data_tmdb.copy()
 films['release_date'] = pd.to_datetime(films['release_date'], errors='coerce')
 
@@ -13,8 +15,7 @@ films['release_date'] = pd.to_datetime(films['release_date'], errors='coerce')
 #_______________________________________________________________________________________________________________________________
 
 # recommandation :
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+
 
 #implélementation du modèle de maching learning et le fit
 
@@ -23,26 +24,19 @@ from sklearn.metrics.pairwise import cosine_similarity
 films['text_features'] = films['text_features'].fillna('').astype(str)
 
 
-#initialiser le vectorizer 
-tfidf = TfidfVectorizer(stop_words='english', max_features=6000)
+# chargement des modèles pré-calculés avec pickle
+with open('tfidf_vectorizer.pkl', 'rb') as f:
+    tfidf = pickle.load(f)
 
-#l'appliquer à la colonne 'text_features' et la création de la matrice
-tfidf_matrix =tfidf.fit_transform(films['text_features'])
+with open('svd_model.pkl', 'rb') as f:
+    svd = pickle.load(f)
 
-from sklearn.decomposition import TruncatedSVD
-svd = TruncatedSVD(n_components=300, random_state=42)
-tfidf_reduced = svd.fit_transform(tfidf_matrix)
+with open('tfidf_reduced.pkl', 'rb') as f:
+    tfidf_reduced = pickle.load(f)
 
-# calculer la similarité cosinus entre tous les films : modèle KNN sur IF IDF
+with open('knn_model.pkl', 'rb') as f:
+    knn = pickle.load(f)
 
-from sklearn.neighbors import NearestNeighbors
-
-# combien de voisin on vise ?
-K = 10  # nombre de voisins
-
-# initialiser le modèle KNN
-knn = NearestNeighbors(metric='cosine', algorithm='brute')
-knn.fit(tfidf_reduced)
 
 # on prépare film_titles pour plus tard
 film_titles = films['original_title'].str.strip().str.lower().tolist()
@@ -70,7 +64,13 @@ def recommandation_film(title, n=7) :
     # --- Affichage du film sélectionné ---
     film_selectionne = films.iloc[index_du_film]
     st.subheader("Film sélectionné :")
-    st.image(film_selectionne['poster_url'], width=200, caption=film_selectionne['title'])
+
+    poster_url = film_selectionne['poster_url']
+    if pd.isna(poster_url) or poster_url.strip() == '':
+        poster_url = 'https://commons.wikimedia.org/wiki/File:No-Image-Placeholder.svg'
+
+    st.image(poster_url, width=200, caption=film_selectionne['title'])
+
     st.write(f"Genre : {film_selectionne['genres']}")
     st.write(f"Année de sortie : {film_selectionne['release_date'].year}")
     st.write(f"Résumé : {film_selectionne['overview']}")
@@ -104,7 +104,12 @@ if titre_saisi:
         st.subheader("Recommandations similaires :")
         for idx in indices_recommandes:
             film = films.iloc[idx]
-            st.image(film['poster_url'], width=150, caption=film['title'])
+            poster_url = film['poster_url']
+            if pd.isna(poster_url) or poster_url.strip() == '':
+                poster_url = 'https://commons.wikimedia.org/wiki/File:No-Image-Placeholder.svg'
+
+            st.image(poster_url, width=150, caption=film['title'])
+
             st.write(f"Genre : {film['genres']}")
             st.write(f"Année de sortie : {film['release_date'].year}")
             st.write(f"Résumé : {film['overview']}")
@@ -120,4 +125,3 @@ with col1:
 
 with col2:
     st.markdown("Cette application a été réalisée par **F.C Data, Ahcene K, Kamel T & Majed S**, Wild Code School 2025.")
-    #test
