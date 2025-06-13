@@ -106,3 +106,4 @@ with col2:
     st.markdown("Cette application a été réalisée par **F.C Data**, Wild Code School 2025.")
     # st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("Cette première version se base seulement sur la base TMDB dans un premier temps.")
+#test

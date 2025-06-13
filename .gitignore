@@ -11,6 +11,10 @@ __pycache__/
 # VS Code settings
 .vscode/
 
+# dossier clean local
+WCS_projet2_FCD_clean/
+
+
 # Fichiers temporaires
 *.log
 C/x3a/Users/Ahcene/
