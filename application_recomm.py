@@ -7,6 +7,15 @@ from enrichir import enrich_film_row
 import base64
 import numpy as np
 
+import gdown
+import os
+
+def download_from_drive(file_id, output_path):
+    if not os.path.exists(output_path):
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, output_path, quiet=False)
+
+
 tmdb_api_key = st.secrets["TMDB_API_KEY"]
 omdb_api_key = st.secrets["OMDB_API_KEY"]
 
@@ -133,15 +142,19 @@ if choix_user == "Non":
 if "selected_movie_id" not in st.session_state:
     st.session_state.selected_movie_id = None
 
+# IDs Drive à remplacer avec les tiens !
+download_from_drive("1VkJzqcN3Fbu-sFnCbdqtRyEIfGPcETI6", "models/features_df.pkl")
+download_from_drive("1v7SdiKqzw5hsDdsLXTVTpQ2tn3V7I2zn", "models/knn_model.pkl")
+
 
 @st.cache_resource
 def load_knn_model():
-    with open('knn_model.pkl', 'rb') as f:
+    with open('models/knn_model.pkl', 'rb') as f:
         return pickle.load(f)
 
 @st.cache_data
 def load_features_df():
-    with open('features_df.pkl', 'rb') as f:
+    with open('models/features_df.pkl', 'rb') as f:
         return pickle.load(f)
     
 @st.cache_data
