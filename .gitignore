@@ -1,16 +1,5 @@
-# fichier 
-cleaned_data_nb.csv.gz
-features_df.pkl
-knn_model.pkl
-mlb_genres.pkl
-ohe_lang.pkl
-scaler.pkl
-ohe_saga_cleaned.pkl
-
 # Données compressées
 *.tsv.gz
-*.csv
-*.pkl
 
 # Checkpoints Jupyter
 .ipynb_checkpoints/
@@ -29,11 +18,6 @@ WCS_projet2_FCD_clean/
 *.log
 C/x3a/Users/Ahcene/
 
-#fichier pickle 
-*.pkl
-
-#fichier pickle 
-*.pkl
-
 C/x3a/Users/Ahcene/*
 
+tmdb_full.csv
