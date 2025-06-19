@@ -16,3 +16,6 @@ Certains fichiers volumineux sont ignorés du dépôt Git. Merci de les placer d
 - `ohe_saga_cleaned.pkl`
 
 Ou configure le script pour les charger depuis une source distante (Drive, API...).
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://fcd-recommandation-de-films.streamlit.app/)
+
