@@ -12,8 +12,10 @@ import os
 
 def download_from_drive(file_id, output_path):
     if not os.path.exists(output_path):
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, output_path, quiet=False)
+
 
 
 tmdb_api_key = st.secrets["TMDB_API_KEY"]
