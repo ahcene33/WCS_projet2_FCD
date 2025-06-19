@@ -145,8 +145,8 @@ if "selected_movie_id" not in st.session_state:
     st.session_state.selected_movie_id = None
 
 # IDs Drive à remplacer avec les tiens !
-download_from_drive("1VkJzqcN3Fbu-sFnCbdqtRyEIfGPcETI6", "models/features_df.pkl")
-download_from_drive("1v7SdiKqzw5hsDdsLXTVTpQ2tn3V7I2zn", "models/knn_model.pkl")
+download_from_drive("1VU5BXVB1eDojDYHlC1Vt_oPTRR4QMTJP", "models/features_df.csv")
+download_from_drive("1KXjk7YikRaTh7MncaJpsgDhhYfB3AV7d", "models/knn_model.pkl")
 
 
 @st.cache_resource
@@ -156,8 +156,8 @@ def load_knn_model():
 
 @st.cache_data
 def load_features_df():
-    with open('models/features_df.pkl', 'rb') as f:
-        return pickle.load(f)
+    return pd.read_csv("models/features_df.csv")
+
     
 @st.cache_data
 def enrich_film_row_cached(row, tmdb_api_key):
