@@ -9,6 +9,18 @@ from sklearn.neighbors import NearestNeighbors
 
 # lecture du CSV clean
 df = pd.read_csv("data_clean.csv", parse_dates=['release_date'])
+colonnes_a_drop = [
+    'imdb_id',
+    'overview',
+    'production_countries',
+    'spoken_languages',
+    'original_title',
+    'revenue',
+    'budget',
+    'production_companies_name'
+]
+
+df = df.drop(columns=colonnes_a_drop, errors='ignore')
 
 #prendre que l'année de sortie du film
 df['release_year'] = df['release_date'].dt.year.astype(int)
@@ -54,7 +66,7 @@ df_scaled = pd.DataFrame(scaler.fit_transform(df[num_cols]), columns=num_cols, i
 
 # concatener tout en features : 
 #prioriser les films de la meme sage, multiplier le poids de saga dans le modèle : 
-saga_df_weighted = saga_df * 5
+saga_df_weighted = saga_df * 0
 
 features_df = pd.concat([genres_df, lang_df, saga_df_weighted, df_scaled], axis=1)
 
