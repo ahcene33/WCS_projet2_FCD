@@ -10,19 +10,76 @@ import numpy as np
 import gdown
 import os
 
-def download_from_drive(file_id, output_path):
-    if not os.path.exists(output_path):
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, output_path, quiet=False)
+st.set_page_config(page_title="Application de recommandation de films", layout="wide")
 
+def download_from_drive(file_id, output_path):
+    if os.path.exists(output_path):
+        return  
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, output_path, quiet=False)
+
+@st.cache_resource
+def run_once():
+    download_from_drive("1LKJ9j2xz_J0sSpoiz-kWEppyN07-ZVFo", "models/features_df.csv")
+    download_from_drive("1xqEXPXyGW-vlxgpq2h6AcOUHdcHCRSrK", "models/knn_model_data.csv")
+
+run_once()
 
 
 tmdb_api_key = st.secrets["TMDB_API_KEY"]
 omdb_api_key = st.secrets["OMDB_API_KEY"]
 
 DEFAULT_POSTER = "None.png"
-st.set_page_config(page_title="Application de recommandation de films", layout="wide")
+
+
+# recomm 
+def afficher_film(film_row):
+    st.subheader(f"{film_row['title']} ({film_row['release_date'].year})")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        poster = film_row['poster_url'] if pd.notna(film_row['poster_url']) else DEFAULT_POSTER
+        st.image(poster, width=250)
+    with col2:
+        synopsis_fallback, _ = get_movie_details_tmdb(film_row['id'], tmdb_api_key)
+        st.markdown(f"**Résumé :** {synopsis_fallback}")
+        st.markdown("**Tags :**")
+        afficher_tags(film_row)
+
+        st.markdown(f"**Note :** {film_row['vote_average']}")
+        st.markdown(f"**Popularité :** {int(film_row['popularity'])}")
+
+def afficher_tags(film_row):
+    tags = film_row['genres'].split(' ') + [film_row['original_language'].upper()]
+    if film_row.get('saga_name_clean') and film_row['saga_name_clean'] != 'Other':
+        tags.append(f"Saga : {film_row['saga_name_clean']}")
+    st.markdown(
+        "<div>" + "".join(f"<span class='tag'>{tag}</span>" for tag in tags) + "</div>",
+        unsafe_allow_html=True
+    )
+
+def afficher_film_aleatoire(df_filtre, bouton_label, bouton_key):
+    if not df_filtre.empty:
+        film = df_filtre.sample(1).iloc[0]
+        if st.button(bouton_label, key=bouton_key):
+            st.session_state.current_movie_id = film['id']
+            st.rerun()
+
+
+if "film_cache" not in st.session_state:
+    st.session_state.film_cache = {}
+
+@st.cache_data(show_spinner=False)
+def get_enriched_film_cached(movie_id, film_row, api_key):
+    return enrich_film_row(film_row, api_key)
+
+def get_enriched_film(film_row):
+    movie_id = film_row["id"]
+    if movie_id in st.session_state.film_cache:
+        return st.session_state.film_cache[movie_id]
+    enriched = get_enriched_film_cached(movie_id, film_row, tmdb_api_key)
+    st.session_state.film_cache[movie_id] = enriched
+    return enriched
 
 
 # Fonction : fond d'écran fixe (page d'accueil)
@@ -90,15 +147,23 @@ if not st.session_state.has_started:
 else:
     set_background_scroll("background3.png")  # FOND dynamique pour l'app
 
+# Chargement des données
 @st.cache_data
 def load_data():
     return pd.read_csv("data_clean.csv", parse_dates=['release_date'])
 
 
-# Chargement des données
+@st.cache_resource
+def load_knn_model():
+    with open('models/knn_model.pkl', 'rb') as f:
+        return pickle.load(f)
+
+@st.cache_data
+def load_features_df():
+    return pd.read_csv("models/features_df.csv")
+
 with st.spinner("Chargement des données..."):
-    df_full = load_data()
-    df = df_full.copy()
+    df = load_data()
 
 
 # Initialisation des variables de session
@@ -114,76 +179,34 @@ choix_user = st.radio(
 )
 
 if choix_user == "Non":
-    st.subheader("Films les mieux notés par les spectateurs")
+    st.subheader("20 films très bien notés à découvrir")
 
-    df_top_films = df_full.copy()
-    df_top_films = df_top_films[df_top_films['vote_count'] > 1000]
-    df_top_films = df_top_films[df_top_films['vote_average'] >= 7.5]
+    # Top films filtrés
+    df_top_films = df[(df['vote_count'] > 1000) & (df['vote_average'] >= 7.5)].copy()
     df_top_films["vote_score"] = df_top_films["vote_average"] * np.log1p(df_top_films["vote_count"])
 
-    top_films = df_top_films.sort_values("vote_score", ascending=False).head(30)
+    # Prendre 20 films aléatoires parmi les top
+    top_20_random = df_top_films.sample(n=20)
 
-    if st.button("Me surprendre avec un excellent film", key="btn_surprise_top_main"):
-        film_random = top_films.sample(1).iloc[0]
-        st.session_state.current_movie_id = film_random['id']
-        st.rerun()
-
-    cols = st.columns(3)
-    for i, (_, film) in enumerate(top_films.iterrows()):
-        with cols[i % 3]:
-            st.image(film['poster_url'] if pd.notna(film['poster_url']) else DEFAULT_POSTER, width=150)
-            if st.button(film['title'], key=f"top_main_film_{film['id']}"):
+    # Affichage par lignes de 4
+    cols = st.columns(4)
+    for i, (_, film) in enumerate(top_20_random.iterrows()):
+        with cols[i % 4]:
+            st.image(film['poster_url'] if pd.notna(film['poster_url']) else DEFAULT_POSTER, width=140)
+            st.caption(film['title'])
+            if st.button("Voir", key=f"btn_top20_{film['id']}"):
                 st.session_state.current_movie_id = film['id']
                 st.rerun()
-
-
-
-
-#initialisation 
-
-if "selected_movie_id" not in st.session_state:
-    st.session_state.selected_movie_id = None
-
-# IDs Drive à remplacer avec les tiens !
-download_from_drive("1VU5BXVB1eDojDYHlC1Vt_oPTRR4QMTJP", "models/features_df.csv")
-download_from_drive("1KXjk7YikRaTh7MncaJpsgDhhYfB3AV7d", "models/knn_model.pkl")
-
-
-@st.cache_resource
-def load_knn_model():
-    with open('models/knn_model.pkl', 'rb') as f:
-        return pickle.load(f)
-
-@st.cache_data
-def load_features_df():
-    return pd.read_csv("models/features_df.csv")
-
-    
-@st.cache_data
-def enrich_film_row_cached(row, tmdb_api_key):
-    return enrich_film_row(row, tmdb_api_key)
 
 
 # Initialisation du film actif dans la session
 def afficher_film_et_recommandations(movie_id):
     film_row = df[df['id'] == movie_id].iloc[0]
     with st.spinner("Chargement du film..."):
-        film_row = enrich_film_row_cached(film_row, tmdb_api_key)
+        film_row = get_enriched_film(film_row)
 
-    st.subheader(f"{film_row['title']} ({film_row['release_date'].year})")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        poster = film_row['poster_url'] if pd.notna(film_row['poster_url']) else DEFAULT_POSTER
-        st.image(poster, width=250)
-    with col2:
-        synopsis_fallback, _ = get_movie_details_tmdb(film_row['id'], tmdb_api_key)
-        st.markdown(f"**Résumé :** {synopsis_fallback}")
-        st.markdown("**Tags :**")
-        tags = film_row['genres'].split(' ') + [film_row['original_language'].upper()]
-        if film_row.get('saga_name_clean') and film_row['saga_name_clean'] != 'Other':
-            tags.append(f"Saga : {film_row['saga_name_clean']}")
+    afficher_film(film_row)  # 👈 appel unique et propre
 
-    # Recommandations
     indices_recommandes = recommend_movie(movie_id)
     if indices_recommandes is not None:
         st.subheader("Recommandations similaires :")
@@ -192,8 +215,9 @@ def afficher_film_et_recommandations(movie_id):
             rec_movie_id = rec_film['id']
             st.image(rec_film['poster_url'] if pd.notna(rec_film['poster_url']) else DEFAULT_POSTER, width=150)
             if st.button(rec_film['title'], key=f"rec_{rec_movie_id}"):
-                
+                st.session_state.current_movie_id = rec_movie_id
                 st.rerun()
+
 
 
 st.subheader("Explorez nos sélections de films")
@@ -203,19 +227,14 @@ tab1, tab2, tab3, tab4 = st.tabs(["Blockbusters", "Classiques", "Arts & Essais",
 with tab1:
     st.write("Films populaires récents (après 2000)")
     df_blockbusters = df[(df['release_date'].dt.year >= 2000) & (df['popularity'] > df['popularity'].quantile(0.90))]
-    random_film = df_blockbusters.sample(1).iloc[0]
-    if st.button("Voir un blockbuster au hasard ", key="btn_blockbuster"):
-        st.session_state.current_movie_id = random_film['id']
-        st.rerun()
+    afficher_film_aleatoire(df_blockbusters, "Voir un blockbuster au hasard", "btn_blockbuster")
+
 
 with tab2:
     st.write("Classiques d'avant 1980, très appréciés")
     df_classics = df[(df['release_date'].dt.year < 1980) & (df['vote_average'] > 7.5)]
-    if not df_classics.empty:
-        random_film = df_classics.sample(1).iloc[0]
-        if st.button("Voir un classique au hasard", key="btn_classic"):
-            st.session_state.current_movie_id = random_film['id']
-            st.rerun()
+    afficher_film_aleatoire(df_classics, "Voir un classique au hasard", "btn_classic")
+
 
 
 with tab3:
@@ -223,47 +242,46 @@ with tab3:
     keywords = ['Documentary', 'Drama', 'Romance', 'History', 'Biography']
     mask_arts = df['genres'].str.contains('|'.join(keywords), case=False, na=False)
     df_arts = df[mask_arts & (df['vote_average'] > 7)]
-    if not df_arts.empty:
-        random_film = df_arts.sample(1).iloc[0]
-        if st.button("Voir un film d’art & essai au hasard", key="btn_art"):
-            st.session_state.current_movie_id = random_film['id']
-            st.rerun()
+    afficher_film_aleatoire(df_arts, "Voir un film d’art & essai au hasard", "btn_art")
+
 
 
 with tab4:
     choix_langue = st.selectbox("Choisissez une langue", df['original_language'].unique())
     df_langue = df[df['original_language'] == choix_langue]
-    if not df_langue.empty:
-        random_film = df_langue.sample(1).iloc[0]
-        if st.button(f"Voir un film en {choix_langue.upper()} au hasard", key="btn_langue"):
-            st.session_state.current_movie_id = random_film['id']
-            st.rerun()
-    else:
+    if df_langue.empty:
         st.warning("Aucun film dans cette langue.")
+    else:
+        afficher_film_aleatoire(df_langue, f"Voir un film en {choix_langue.upper()} au hasard", "btn_langue")
 
+@st.cache_data
+def load_all_models():
+    features_df = pd.read_csv("models/features_df.csv")
+    with open("models/knn_model.pkl", "rb") as f:
+        knn_model = pickle.load(f)
+    return features_df, knn_model
 
-
-with st.spinner("Chargement des vecteurs de films..."):
-    features_df = load_features_df()
-
-with st.spinner("Chargement du modèle de recommandation..."):
-    knn_model = load_knn_model()
+features_df, knn_model = load_all_models()
 
 def recommend_movie(movie_id, n_recommendations=5):
-    idx_list = df[df['id'] == movie_id].index.tolist()
-    if not idx_list:
+    try:
+        idx = df[df["id"] == movie_id].index[0]
+    except IndexError:
         st.error("Film ID non trouvé.")
         return []
-    idx = idx_list[0]
-    distances, indices = knn_model.kneighbors([features_df.iloc[idx].values], n_neighbors=n_recommendations + 1)
-    rec_indices = indices.flatten()[1:]
-    return rec_indices
+
+    distances, indices = knn_model.kneighbors(
+        [features_df.iloc[idx].values],
+        n_neighbors=n_recommendations + 1
+    )
+    return indices.flatten()[1:]
+
 
 with st.expander("Rechercher un film manuellement"):
     titre_input = st.text_input("Entrez un mot clé du titre :", key="search_main")
 
     if titre_input:
-        resultats = df_full[df_full['original_title'].str.contains(titre_input, case=False, na=False)].sort_values("popularity", ascending=False).head(10)
+        resultats = df[df['original_title'].str.contains(titre_input, case=False, na=False)].sort_values("popularity", ascending=False).head(10)
         titres_possibles = resultats['original_title'].tolist()
 
         if titres_possibles:
@@ -281,38 +299,12 @@ if st.session_state.current_movie_id is not None:
     movie_id = film_row['id']
     
     with st.spinner("Enrichissement du film sélectionné..."):
-        film_row = enrich_film_row_cached(film_row, tmdb_api_key)
+        film_row = get_enriched_film(film_row)
 
-    st.subheader(f"{film_row['title']} ({film_row['release_date'].year})")
+    afficher_film(film_row)
 
-    col_left, col_right = st.columns([1, 2])
-
-    with col_left:
-        poster = film_row['poster_url'] if pd.notna(film_row['poster_url']) else DEFAULT_POSTER
-        st.image(poster, width=250)
-
-    with col_right:
-        synopsis_fallback, _ = get_movie_details_tmdb(film_row['id'], tmdb_api_key)
-        st.markdown(f"**Résumé :** {synopsis_fallback}")
-        
-        st.markdown("**Tags :**")
-        tags = []
-
-        if pd.notna(film_row.get('genres')):
-            tags += film_row['genres'].split(' ')
-        if pd.notna(film_row.get('original_language')):
-            tags.append(film_row['original_language'].upper())
-        if film_row.get('saga_name_clean') and film_row['saga_name_clean'] != "Other":
-            tags.append(f"Saga : {film_row['saga_name_clean']}")
-
-        st.markdown(
-    "<div>" + "".join(f"<span class='tag'>{tag}</span>" for tag in tags) + "</div>",
-    unsafe_allow_html=True
-)
-
-        st.markdown(f"**Note :** {film_row['vote_average']}")
-        st.markdown(f"**Popularité :** {int(film_row['popularity'])}")
-
+    st.markdown(f"**Note :** {film_row['vote_average']}")
+    st.markdown(f"**Popularité :** {int(film_row['popularity'])}")
 
     if st.button("Voir plus (Synopsis FR + Trailer)", key="main_voir_plus"):
         synopsis_fr, trailer_url = get_movie_details_tmdb(movie_id, tmdb_api_key)
@@ -332,24 +324,17 @@ if st.session_state.current_movie_id is not None:
         st.subheader("Recommandations similaires")
         reco_films = [df.iloc[idx] for idx in indices_recommandes[:5]]
         cols = st.columns(len(reco_films))
-
+        
         for i, rec_film in enumerate(reco_films):
-            rec_movie_id = rec_film['id']
+            rec_film = get_enriched_film(rec_film)
             with cols[i]:
                 with st.spinner(f"Chargement : {rec_film['title']}"):
-                    rec_film = enrich_film_row(rec_film, tmdb_api_key)
-                poster = rec_film['poster_url'] if pd.notna(rec_film['poster_url']) else DEFAULT_POSTER
-
-                if st.button(f"{rec_film['title']}", key=f"img_{rec_movie_id}"):
-                    st.session_state.current_movie_id = rec_movie_id
-                    st.rerun()
-
-
-
-                st.image(poster, width=140)
-                st.markdown(f"**{rec_film['title']}**", unsafe_allow_html=True)
-                st.caption(f"{rec_film['release_date'].year} | {rec_film['vote_average']}/10")
-
+                    st.image(rec_film['poster_url'] if pd.notna(rec_film['poster_url']) else DEFAULT_POSTER, width=140)
+                    st.markdown(f"**{rec_film['title']}**", unsafe_allow_html=True)
+                    st.caption(f"{rec_film['release_date'].year} | {rec_film['vote_average']}/10")
+                    if st.button(f"{rec_film['title']}", key=f"img_{rec_film['id']}"):
+                        st.session_state.current_movie_id = rec_film['id']
+                        st.rerun()
 
 
 st.markdown("---")
